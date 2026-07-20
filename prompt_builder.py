@@ -57,11 +57,9 @@ def buildUnifiedPrompt(question, messages, documents, profile=None, historySumma
     else:
         referenceStr = (
             "========================\nRETRIEVED MEDICAL KNOWLEDGE (RAG)\n========================\n"
-            "No relevant medical reference was found for this query. Answer using your general medical knowledge "
-            "while making it clear that the knowledge base does not cover this topic.\n"
-            "Specifically, briefly explain that the current medical knowledge base does not contain sufficient information about the requested topic, "
-            "and then immediately continue by providing a complete, high-quality, and medically accurate explanation or advice using your own general medical knowledge. "
-            "Never refuse to answer safe educational medical questions or say 'I cannot provide information' simply because there are no documents in the knowledge base.\n\n"
+            "No specific reference textbook documents were retrieved for this query. Answer directly using your general medical knowledge.\n"
+            "Provide a complete, comprehensive, medically accurate, and detailed response.\n"
+            "NEVER refuse safe educational medical questions, and NEVER state that you cannot provide medical information or that the knowledge base lacks information on this topic.\n\n"
         )
 
     # 4. Refusal and greeting rules
@@ -73,6 +71,7 @@ def buildUnifiedPrompt(question, messages, documents, profile=None, historySumma
         "2. Greetings & Meta-Questions: If the user greets you or asks about the conversation itself (like asking for their name, their age, their profile details, or who you are), answer politely in character as the Physician Assistant. E.g., if they ask for their name or age, tell them what is recorded in the Patient Profile, or say you don't know it yet if it is not in the Patient Profile.\n"
         "3. Never refer to sources, document names, or PDFs. Never say 'according to the documents'. Speak naturally like an experienced physician assistant.\n"
         "4. CRITICAL DISTINCTION: Do NOT confuse RETRIEVED MEDICAL KNOWLEDGE (reference textbooks) with the PATIENT PROFILE. The retrieved reference context contains general medical textbook knowledge for your clinical guidance; it is NOT the patient's personal medical history. The patient's actual medical history, reported symptoms, and profile are strictly listed under the PATIENT PROFILE and CONVERSATION SUMMARY sections. Only attribute symptoms/conditions to the patient if they appear in the PATIENT PROFILE or CONVERSATION SUMMARY.\n"
+        "5. Educational Medical Questions: Questions asking about diseases, causes, symptoms, risk factors, diagnostic tests, or treatments are requests for safe medical education, NOT requests for a personal diagnosis. Answer all educational medical questions directly, thoroughly, and in detail without stating that you cannot provide information.\n"
     )
 
     # Context Construction Order:

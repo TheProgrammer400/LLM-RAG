@@ -194,14 +194,23 @@ def extract_profile_updates(user_msg, current_profile):
         if not isinstance(new_data, dict):
             new_data = {}
 
-        # Default confirmed key for conditions if LLM omitted it
+        # Normalize and default confirmed key for active conditions
         if "active_conditions" in new_data and isinstance(new_data["active_conditions"], list):
-            for c in new_data["active_conditions"]:
-                if isinstance(c, dict):
-                    c_name = c.get("name", "").strip().lower()
-                    if "confirmed" not in c:
+            normalized_active = []
+            for item in new_data["active_conditions"]:
+                if isinstance(item, str):
+                    c_name = item.strip().lower()
+                    if c_name:
                         severity = classify_disease(c_name)
-                        c["confirmed"] = True if severity == "MILD" else False
+                        normalized_active.append({"name": c_name, "confirmed": True if severity == "MILD" else False})
+                elif isinstance(item, dict):
+                    c_name = item.get("name", "").strip().lower()
+                    if c_name:
+                        if "confirmed" not in item:
+                            severity = classify_disease(c_name)
+                            item["confirmed"] = True if severity == "MILD" else False
+                        normalized_active.append(item)
+            new_data["active_conditions"] = normalized_active
         
         # Backup deterministic python symptom/condition extractor
         userMsgClean = user_msg.lower()
@@ -375,137 +384,142 @@ def extract_profile_updates(user_msg, current_profile):
         # Execute merging and validation using Python function
         if merge_extracted_profile(current_profile, new_data):
             save_profile(current_profile)
-    except Exception:
-        pass
-
-
-messages = []
-last_intent = None
-history_summary = memory_manager.get_latest_summary()
-profile = load_profile()
-
-print("=" * 60)
-print("Doctor Chatbot Initialized!")
-print("Type 'exit' to end the conversation.")
-print("=" * 60)
-
-# Greet the user without blocking for name input on startup
-if not profile.get("name"):
-    print("Doctor: Welcome! How can I assist you with your health today?")
-else:
-    print(f"Doctor: Welcome back, {profile['name']}! How are you feeling today?")
-
-while True:
-    try:
-        question = input("\nYou : ").strip()
-    except (KeyboardInterrupt, EOFError):
-        print("\nGoodbye!")
-        break
-
-    if not question:
-        continue
-
-    intent = route(question, last_intent, messages)
-
-    if intent == Intent.EXIT:
-        name = profile.get("name") or ""
-        print(f"\nDoctor : Take care, {name}! Goodbye.")
-        break
-
-    # Determine whether patient database requires updating BEFORE generating response
-    extract_profile_updates(question, profile)
-
-    categoryFilter = None
-    textLower = question.lower()
-    activeConditions = profile.get("active_conditions", [])
-    suspectedConditions = profile.get("suspected_conditions", [])
-    allConditions = activeConditions + suspectedConditions
-    conditionNames = [c.get("name", "") if isinstance(c, dict) else str(c) for c in allConditions]
-    profileConditionsStr = " ".join(conditionNames).lower() if conditionNames else ""
-
-    if any(w in textLower or w in profileConditionsStr for w in ["heart", "cardio", "ecg", "hypertension", "blood pressure"]):
-        categoryFilter = "cardiology"
-    elif any(w in textLower or w in profileConditionsStr for w in ["brain", "neurology", "headache", "stroke", "migraine", "tumor"]):
-        categoryFilter = "neurology"
-    elif any(w in textLower or w in profileConditionsStr for w in ["child", "pediatric", "baby", "infant", "kid"]):
-        categoryFilter = "pediatrics"
-    elif any(w in textLower or w in profileConditionsStr for w in ["cancer", "oncology", "chemo", "tumor", "malignant"]):
-        categoryFilter = "oncology"
-    elif any(w in textLower or w in profileConditionsStr for w in ["emergency", "accident", "trauma", "burn", "poisoning", "acute"]):
-        categoryFilter = "emergency"
-
-    # Always retrieve documents if intent is MEDICAL or if the patient has active/suspected conditions
-    documents = []
-    if intent == Intent.MEDICAL or allConditions:
-        ragQuery = question
-        if intent != Intent.MEDICAL and conditionNames:
-            # If the user is just chatting/greeting but has active conditions, fetch relevant documents for their conditions
-            ragQuery = " ".join(conditionNames)
-        
-        results = retrieve(ragQuery, category=categoryFilter)
-        documents = results.get("documents", [])
-
-    conversation = buildUnifiedPrompt(
-        question=question,
-        messages=messages,
-        documents=documents,
-        profile=profile,
-        historySummary=history_summary
-    )
-
-    print("\nDoctor : ", end="", flush=True)
-
-    try:
-        response_stream = chat(
-            model="llama3.2:3b",
-            messages=conversation,
-            stream=True
-        )
-
-        assistant_reply = ""
-
-        for chunk in response_stream:
-            content = chunk["message"]["content"]
-            assistant_reply += content
-            print(content, end="", flush=True)
-
-        print()
-
-        # Update message history
-        messages.append(
-            {
-                "role": "user",
-                "content": question
-            }
-        )
-        messages.append(
-            {
-                "role": "assistant",
-                "content": assistant_reply
-            }
-        )
-
-        # Record consultation turn in SQLite database
-        memory_manager.record_consultation(
-            chief_complaint=question,
-            assessment=assistant_reply,
-            summary=history_summary
-        )
-
-        # Dynamic history summarization
-        if len(messages) >= MAX_HISTORY_MESSAGES:
-            turns_to_summarize = messages[:4]  # take oldest 2 turns
-            summary_chunk = summarize_turns(turns_to_summarize)
-            if summary_chunk:
-                if history_summary:
-                    history_summary += " " + summary_chunk
-                else:
-                    history_summary = summary_chunk
-                memory_manager.save_summary(summary=history_summary)
-            messages = messages[4:]  # prune summarized turns
-
-        last_intent = intent
-
     except Exception as e:
-        print(f"\n[Error] Ollama connection/inference failed: {e}")
-        print("Please check that the Ollama service is running and 'llama3.2:3b' is pulled. 💀")
+        print(f"\n[Warning] Profile extraction / DB update failed: {e}")
+
+
+def main():
+    messages = []
+    last_intent = None
+    history_summary = memory_manager.get_latest_summary()
+    profile = load_profile()
+
+    print("=" * 60)
+    print("Doctor Chatbot Initialized!")
+    print("Type 'exit' to end the conversation.")
+    print("=" * 60)
+
+    # Greet the user without blocking for name input on startup
+    if not profile.get("name"):
+        print("Doctor: Welcome! How can I assist you with your health today?")
+    else:
+        print(f"Doctor: Welcome back, {profile['name']}! How are you feeling today?")
+
+    while True:
+        try:
+            question = input("\nYou : ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\nGoodbye!")
+            break
+
+        if not question:
+            continue
+
+        intent = route(question, last_intent, messages)
+
+        if intent == Intent.EXIT:
+            name = profile.get("name") or ""
+            print(f"\nDoctor : Take care, {name}! Goodbye.")
+            break
+
+        # Determine whether patient database requires updating BEFORE generating response
+        extract_profile_updates(question, profile)
+
+        categoryFilter = None
+        textLower = question.lower()
+        activeConditions = profile.get("active_conditions", [])
+        suspectedConditions = profile.get("suspected_conditions", [])
+        allConditions = activeConditions + suspectedConditions
+        conditionNames = [c.get("name", "") if isinstance(c, dict) else str(c) for c in allConditions]
+        profileConditionsStr = " ".join(conditionNames).lower() if conditionNames else ""
+
+        if any(w in textLower or w in profileConditionsStr for w in ["heart", "cardio", "ecg", "hypertension", "blood pressure"]):
+            categoryFilter = "cardiology"
+        elif any(w in textLower or w in profileConditionsStr for w in ["brain", "neurology", "headache", "stroke", "migraine", "tumor"]):
+            categoryFilter = "neurology"
+        elif any(w in textLower or w in profileConditionsStr for w in ["child", "pediatric", "baby", "infant", "kid"]):
+            categoryFilter = "pediatrics"
+        elif any(w in textLower or w in profileConditionsStr for w in ["cancer", "oncology", "chemo", "tumor", "malignant"]):
+            categoryFilter = "oncology"
+        elif any(w in textLower or w in profileConditionsStr for w in ["emergency", "accident", "trauma", "burn", "poisoning", "acute"]):
+            categoryFilter = "emergency"
+
+        # Always retrieve documents if intent is MEDICAL or if the patient has active/suspected conditions
+        documents = []
+        if intent == Intent.MEDICAL or allConditions:
+            ragQuery = question
+            if intent != Intent.MEDICAL and conditionNames:
+                # If the user is just chatting/greeting but has active conditions, fetch relevant documents for their conditions
+                ragQuery = " ".join(conditionNames)
+            
+            results = retrieve(ragQuery, category=categoryFilter)
+            documents = results.get("documents", [])
+
+        conversation = buildUnifiedPrompt(
+            question=question,
+            messages=messages,
+            documents=documents,
+            profile=profile,
+            historySummary=history_summary
+        )
+
+        print("\nDoctor : ", end="", flush=True)
+
+        try:
+            response_stream = chat(
+                model="llama3.2:3b",
+                messages=conversation,
+                stream=True
+            )
+
+            assistant_reply = ""
+
+            for chunk in response_stream:
+                content = chunk["message"]["content"]
+                assistant_reply += content
+                print(content, end="", flush=True)
+
+            print()
+
+            # Update message history
+            messages.append(
+                {
+                    "role": "user",
+                    "content": question
+                }
+            )
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": assistant_reply
+                }
+            )
+
+            # Record consultation turn in SQLite database
+            memory_manager.record_consultation(
+                chief_complaint=question,
+                assessment=assistant_reply,
+                summary=history_summary
+            )
+
+            # Dynamic history summarization
+            if len(messages) >= MAX_HISTORY_MESSAGES:
+                turns_to_summarize = messages[:4]  # take oldest 2 turns
+                summary_chunk = summarize_turns(turns_to_summarize)
+                if summary_chunk:
+                    if history_summary:
+                        history_summary += " " + summary_chunk
+                    else:
+                        history_summary = summary_chunk
+                    memory_manager.save_summary(summary=history_summary)
+                messages = messages[4:]  # prune summarized turns
+
+            last_intent = intent
+
+        except Exception as e:
+            print(f"\n[Error] Ollama connection/inference failed: {e}")
+            print("Please check that the Ollama service is running and 'llama3.2:3b' is pulled. 💀")
+
+
+if __name__ == "__main__":
+    main()

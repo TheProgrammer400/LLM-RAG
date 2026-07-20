@@ -1,11 +1,12 @@
 # Centralized disease severity classification database
 
 MILD_KEYWORDS = [
-    "cold", "common cold", "viral fever", "influenza", "flu", "seasonal allergies", "allergic rhinitis",
+    "fever", "viral fever", "cold", "common cold", "influenza", "flu", "seasonal allergies", "allergic rhinitis",
     "gastritis", "gerd", "acid reflux", "indigestion", "constipation", "gastroenteritis", "food poisoning",
     "dehydration", "migraine", "tension headache", "headache", "muscle strain", "back pain", "sprain", "sprains",
     "minor burns", "insect bites", "urinary tract infection", "uti", "conjunctivitis", "contact dermatitis",
-    "eczema", "sore throat", "sinusitis", "cough", "burn"
+    "eczema", "sore throat", "sinusitis", "cough", "burn", "fatigue", "chills", "body ache", "body aches",
+    "nausea", "vomiting", "diarrhea", "congestion", "runny nose", "stuffy nose", "sneeze"
 ]
 
 MODERATE_KEYWORDS = [

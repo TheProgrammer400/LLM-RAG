@@ -1,6 +1,7 @@
 import json
 import os
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime
 
 
@@ -18,14 +19,26 @@ class PatientMemoryManager:
             os.makedirs(db_dir, exist_ok=True)
         self._init_db()
 
+    @contextmanager
     def get_connection(self):
         conn = sqlite3.connect(self.db_path, timeout=30.0)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
     def _init_db(self):
         with self.get_connection() as conn:
             cursor = conn.cursor()
+
+            # Enable Write-Ahead Logging (WAL) and busy timeout to avoid database locks
+            cursor.execute("PRAGMA journal_mode=WAL;")
+            cursor.execute("PRAGMA busy_timeout=30000;")
 
             # 1. Patients Demographics Table
             cursor.execute("""
@@ -264,7 +277,8 @@ class PatientMemoryManager:
                 entity_type="allergy",
                 entity_name=clean_name,
                 description=f"Allergy '{clean_name}' recorded.",
-                source="user"
+                source="user",
+                conn=conn
             )
             conn.commit()
 
@@ -284,7 +298,8 @@ class PatientMemoryManager:
                 entity_type="medication",
                 entity_name=clean_name,
                 description=f"Medication '{clean_name}' recorded.",
-                source="user"
+                source="user",
+                conn=conn
             )
             conn.commit()
 
@@ -304,7 +319,8 @@ class PatientMemoryManager:
                 entity_type="surgery",
                 entity_name=clean_name,
                 description=f"Surgery '{clean_name}' recorded.",
-                source="user"
+                source="user",
+                conn=conn
             )
             conn.commit()
 
@@ -324,7 +340,8 @@ class PatientMemoryManager:
                 entity_type="family_history",
                 entity_name=clean_detail,
                 description=f"Family history item '{clean_detail}' recorded.",
-                source="user"
+                source="user",
+                conn=conn
             )
             conn.commit()
 
@@ -354,7 +371,8 @@ class PatientMemoryManager:
                     entity_type="condition",
                     entity_name=c_name,
                     description=f"Active condition '{c_name}' updated.",
-                    source=source
+                    source=source,
+                    conn=conn
                 )
 
             elif category == "suspected":
@@ -374,7 +392,8 @@ class PatientMemoryManager:
                     entity_type="condition",
                     entity_name=c_name,
                     description=f"Suspected condition '{c_name}' recorded.",
-                    source=source
+                    source=source,
+                    conn=conn
                 )
 
             elif category == "chronic":
@@ -388,7 +407,8 @@ class PatientMemoryManager:
                     entity_type="condition",
                     entity_name=c_name,
                     description=f"Chronic condition '{c_name}' recorded.",
-                    source=source
+                    source=source,
+                    conn=conn
                 )
 
             conn.commit()
@@ -417,7 +437,8 @@ class PatientMemoryManager:
                 entity_type="condition",
                 entity_name=c_name,
                 description=f"Condition '{c_name}' resolved.",
-                source="user"
+                source="user",
+                conn=conn
             )
             conn.commit()
 
@@ -451,14 +472,20 @@ class PatientMemoryManager:
             row = cursor.fetchone()
             return row["summary"] if row else ""
 
-    def record_timeline_event(self, patient_id=1, event_type="EVENT", entity_type="general", entity_name="", description="", source="system"):
-        with self.get_connection() as conn:
+    def record_timeline_event(self, patient_id=1, event_type="EVENT", entity_type="general", entity_name="", description="", source="system", conn=None):
+        if conn is not None:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO medical_timeline (patient_id, event_type, entity_type, entity_name, description, source) VALUES (?, ?, ?, ?, ?, ?)",
                 (patient_id, event_type, entity_type, entity_name, description, source)
             )
-            conn.commit()
+        else:
+            with self.get_connection() as c:
+                cursor = c.cursor()
+                cursor.execute(
+                    "INSERT INTO medical_timeline (patient_id, event_type, entity_type, entity_name, description, source) VALUES (?, ?, ?, ?, ?, ?)",
+                    (patient_id, event_type, entity_type, entity_name, description, source)
+                )
 
     def get_timeline(self, patient_id=1, limit=50):
         with self.get_connection() as conn:
@@ -536,3 +563,22 @@ class PatientMemoryManager:
                 "surgeries": surgeries,
                 "family_history": family_history
             }
+
+    def clear_all_data(self):
+        """
+        Clears all records across all database tables while preserving table schemas.
+        """
+        tables = [
+            "patients", "allergies", "medications", "surgeries", "family_history",
+            "active_conditions", "suspected_conditions", "resolved_conditions",
+            "chronic_conditions", "consultations", "conversation_summaries", "medical_timeline"
+        ]
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            for t in tables:
+                cursor.execute(f"DELETE FROM {t};")
+            try:
+                cursor.execute("DELETE FROM sqlite_sequence;")
+            except Exception:
+                pass
+            conn.commit()
