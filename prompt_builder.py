@@ -72,6 +72,7 @@ def buildUnifiedPrompt(question, messages, documents, profile=None, historySumma
         "you must IMMEDIATELY and POLITELY DECLINE, state that you can only help with medical or health-related topics, and prompt them to ask a health-related question. Do NOT provide any external facts or trivia about the off-topic subject under any circumstances.\n"
         "2. Greetings & Meta-Questions: If the user greets you or asks about the conversation itself (like asking for their name, their age, their profile details, or who you are), answer politely in character as the Physician Assistant. E.g., if they ask for their name or age, tell them what is recorded in the Patient Profile, or say you don't know it yet if it is not in the Patient Profile.\n"
         "3. Never refer to sources, document names, or PDFs. Never say 'according to the documents'. Speak naturally like an experienced physician assistant.\n"
+        "4. CRITICAL DISTINCTION: Do NOT confuse RETRIEVED MEDICAL KNOWLEDGE (reference textbooks) with the PATIENT PROFILE. The retrieved reference context contains general medical textbook knowledge for your clinical guidance; it is NOT the patient's personal medical history. The patient's actual medical history, reported symptoms, and profile are strictly listed under the PATIENT PROFILE and CONVERSATION SUMMARY sections. Only attribute symptoms/conditions to the patient if they appear in the PATIENT PROFILE or CONVERSATION SUMMARY.\n"
     )
 
     # Context Construction Order:

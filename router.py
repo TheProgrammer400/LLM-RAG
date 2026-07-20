@@ -218,6 +218,21 @@ def route(question: str, last_intent: Intent = None, history: list = None) -> In
     if clean_text in SMALL_TALK:
         return Intent.SMALL_TALK
 
+    # Check for personal history / profile meta queries (prevent RAG textbook retrieval)
+    profile_meta_patterns = [
+        r"\bwhat (?:are|were) my (?:conditions|symptoms|allergies|medications|diseases)\b",
+        r"\bwhat (?:medical )?conditions (?:do|did) i (?:have|had)\b",
+        r"\bdo i have (?:any|a) (?:conditions|allergies|medications)\b",
+        r"\bwhat do you know about (?:me|my health|my profile)\b",
+        r"\bwhat is my (?:name|age|gender)\b",
+        r"\bmy medical history\b",
+        r"\bmy profile\b",
+        r"\baccording to you\b"
+    ]
+    for p in profile_meta_patterns:
+        if re.search(p, text):
+            return Intent.CONVERSATION
+
     for pattern in MEDICAL_PATTERNS:
         if re.search(pattern, text):
             return Intent.MEDICAL

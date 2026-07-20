@@ -6,64 +6,24 @@ from retrieve import retrieve
 from router import route, Intent, GREETINGS
 from prompt_builder import buildUnifiedPrompt
 from disease_classifier import classify_disease
+from db_manager import PatientMemoryManager
 
-PROFILE_FILE = "patient_profile.json"
 MAX_HISTORY_MESSAGES = 10  # Turn on summarization when history reaches this limit
 
+# Instantiate persistent SQLite EHR memory manager
+memory_manager = PatientMemoryManager()
 
 
 def load_profile():
-    if os.path.exists(PROFILE_FILE):
-        try:
-            with open(PROFILE_FILE, "r") as f:
-                data = json.load(f)
-                
-                # Check for legacy and initialize all required fields
-                if "conditions" in data and "active_conditions" not in data:
-                    data["active_conditions"] = data.pop("conditions")
-                if "cured_conditions" in data and "resolved_conditions" not in data:
-                    data["resolved_conditions"] = data.pop("cured_conditions")
-                
-                for k in ["name", "age", "gender"]:
-                    if k not in data:
-                        data[k] = None
-                        
-                for k in ["allergies", "chronic_conditions", "active_conditions", "suspected_conditions", "resolved_conditions", "medications", "surgeries", "family_history"]:
-                    if k not in data:
-                        data[k] = []
-                        
-                # Ensure active, resolved, suspected, and chronic conditions are list of dicts
-                for k in ["active_conditions", "suspected_conditions", "resolved_conditions", "chronic_conditions"]:
-                    for i, item in enumerate(data[k]):
-                        if not isinstance(item, dict):
-                            data[k][i] = {"name": str(item).strip().lower()}
-                            
-                return data
-        except Exception:
-            pass
-            
-    # Default initial profile structure
-    return {
-        "name": None,
-        "age": None,
-        "gender": None,
-        "allergies": [],
-        "chronic_conditions": [],
-        "active_conditions": [],
-        "suspected_conditions": [],
-        "resolved_conditions": [],
-        "medications": [],
-        "surgeries": [],
-        "family_history": []
-    }
+    return memory_manager.get_patient_snapshot()
 
 
 def save_profile(profile):
-    try:
-        with open(PROFILE_FILE, "w") as f:
-            json.dump(profile, f, indent=4)
-    except Exception as e:
-        print(f"\n[Warning] Failed to save profile: {e}")
+    memory_manager.update_patient_demographics(
+        name=profile.get("name"),
+        age=profile.get("age"),
+        gender=profile.get("gender")
+    )
 
 
 def summarize_turns(messagesList):
@@ -105,23 +65,43 @@ def merge_extracted_profile(current_profile, extracted_data):
         return []
 
     # 1. Update name, age, and gender
-    if extracted_data.get("name") and extracted_data["name"] != current_profile.get("name"):
-        current_profile["name"] = extracted_data["name"]
-        updated = True
-    if extracted_data.get("age") and extracted_data["age"] != current_profile.get("age"):
-        current_profile["age"] = extracted_data["age"]
-        updated = True
-    if extracted_data.get("gender") and extracted_data["gender"] != current_profile.get("gender"):
-        current_profile["gender"] = extracted_data["gender"]
+    name_val = extracted_data.get("name")
+    age_val = extracted_data.get("age")
+    gender_val = extracted_data.get("gender")
+    if (name_val and name_val != current_profile.get("name")) or \
+       (age_val and age_val != current_profile.get("age")) or \
+       (gender_val and gender_val != current_profile.get("gender")):
+        memory_manager.update_patient_demographics(
+            name=name_val or current_profile.get("name"),
+            age=age_val or current_profile.get("age"),
+            gender=gender_val or current_profile.get("gender")
+        )
         updated = True
 
     # 2. Update list fields: allergies, medications, surgeries, family_history
-    for list_key in ["allergies", "medications", "surgeries", "family_history"]:
-        for item in get_list(extracted_data, list_key):
-            item_clean = str(item).strip().lower()
-            if item_clean and item_clean not in current_profile[list_key]:
-                current_profile[list_key].append(item_clean)
-                updated = True
+    for item in get_list(extracted_data, "allergies"):
+        item_clean = str(item).strip().lower()
+        if item_clean and item_clean not in current_profile["allergies"]:
+            memory_manager.add_allergy(allergy_name=item_clean)
+            updated = True
+
+    for item in get_list(extracted_data, "medications"):
+        item_clean = str(item).strip().lower()
+        if item_clean and item_clean not in current_profile["medications"]:
+            memory_manager.add_medication(medication_name=item_clean)
+            updated = True
+
+    for item in get_list(extracted_data, "surgeries"):
+        item_clean = str(item).strip().lower()
+        if item_clean and item_clean not in current_profile["surgeries"]:
+            memory_manager.add_surgery(surgery_name=item_clean)
+            updated = True
+
+    for item in get_list(extracted_data, "family_history"):
+        item_clean = str(item).strip().lower()
+        if item_clean and item_clean not in current_profile["family_history"]:
+            memory_manager.add_family_history(detail=item_clean)
+            updated = True
 
     # 3. Update chronic conditions
     for cond in get_list(extracted_data, "chronic_conditions"):
@@ -130,22 +110,8 @@ def merge_extracted_profile(current_profile, extracted_data):
         c_name = cond.get("name", "").strip().lower()
         if not c_name:
             continue
-        
-        match = None
-        for existing in current_profile["chronic_conditions"]:
-            ex_name = existing.get("name", "") if isinstance(existing, dict) else str(existing)
-            if c_name == ex_name.lower():
-                match = existing
-                break
-        if match:
-            if isinstance(match, dict):
-                for k, v in cond.items():
-                    if match.get(k) != v:
-                        match[k] = v
-                        updated = True
-        else:
-            current_profile["chronic_conditions"].append(cond)
-            updated = True
+        memory_manager.add_condition(condition_name=c_name, category="chronic", metadata=cond)
+        updated = True
 
     # 4. Update new conditions (both suspected and active)
     new_active_list = get_list(extracted_data, "active_conditions")
@@ -161,138 +127,37 @@ def merge_extracted_profile(current_profile, extracted_data):
             severity = classify_disease(c_name)
             is_confirmed = cond.get("confirmed", False)
 
-            # Determine the target database list based on classification rules
-            if severity == "MILD":
-                target_list = "active_conditions"
+            if severity == "MILD" or is_confirmed:
+                memory_manager.add_condition(
+                    condition_name=c_name,
+                    category="active",
+                    metadata=cond,
+                    confidence="confirmed" if is_confirmed else "patient_reported",
+                    severity=severity
+                )
             else:
-                # MODERATE or SEVERE
-                target_list = "active_conditions" if is_confirmed else "suspected_conditions"
-
-            # Check if this condition is currently resolved (flare-up)
-            resolved_match = None
-            for res in current_profile.get("resolved_conditions", []):
-                res_name = res.get("name", "") if isinstance(res, dict) else str(res)
-                if c_name == res_name.lower():
-                    resolved_match = res
-                    break
-            if resolved_match:
-                current_profile["resolved_conditions"].remove(resolved_match)
-                if isinstance(resolved_match, dict):
-                    merged = resolved_match.copy()
-                    for k, v in cond.items():
-                        merged[k] = v
-                    cond = merged
-                updated = True
-
-            if target_list == "active_conditions":
-                # Check and remove from suspected list if it is now confirmed/active
-                suspected_match = None
-                for susp in current_profile.get("suspected_conditions", []):
-                    susp_name = susp.get("name", "") if isinstance(susp, dict) else str(susp)
-                    if c_name == susp_name.lower():
-                        suspected_match = susp
-                        break
-                if suspected_match:
-                    current_profile["suspected_conditions"].remove(suspected_match)
-                    if isinstance(suspected_match, dict):
-                        merged = suspected_match.copy()
-                        for k, v in cond.items():
-                            merged[k] = v
-                        cond = merged
-                    updated = True
-
-                # Check if already in active_conditions
-                active_match = None
-                for active in current_profile["active_conditions"]:
-                    act_name = active.get("name", "") if isinstance(active, dict) else str(active)
-                    if c_name == act_name.lower():
-                        active_match = active
-                        break
-                if active_match:
-                    if isinstance(active_match, dict):
-                        for k, v in cond.items():
-                            if active_match.get(k) != v:
-                                active_match[k] = v
-                                updated = True
-                else:
-                    current_profile["active_conditions"].append(cond)
-                    updated = True
-
-            elif target_list == "suspected_conditions":
-                # A confirmed diagnosis in active_conditions should not be demoted to suspected
-                already_active = False
-                for active in current_profile["active_conditions"]:
-                    act_name = active.get("name", "") if isinstance(active, dict) else str(active)
-                    if c_name == act_name.lower():
-                        already_active = True
-                        break
-                if already_active:
-                    continue
-
-                # Check if already in suspected_conditions
-                suspected_match = None
-                for susp in current_profile["suspected_conditions"]:
-                    susp_name = susp.get("name", "") if isinstance(susp, dict) else str(susp)
-                    if c_name == susp_name.lower():
-                        suspected_match = susp
-                        break
-                if suspected_match:
-                    if isinstance(suspected_match, dict):
-                        for k, v in cond.items():
-                            if suspected_match.get(k) != v:
-                                suspected_match[k] = v
-                                updated = True
-                else:
-                    current_profile["suspected_conditions"].append(cond)
-                    updated = True
+                memory_manager.add_condition(
+                    condition_name=c_name,
+                    category="suspected",
+                    metadata=cond,
+                    confidence="suspected",
+                    severity=severity
+                )
+            updated = True
 
     # 5. Update resolved conditions (can resolve from active or suspected)
     new_resolved_list = get_list(extracted_data, "resolved_conditions")
     if new_resolved_list:
         for cond_name in new_resolved_list:
             cond_clean = str(cond_name).strip().lower()
-            matched_source = None
-            source_list_name = None
-
-            # Look in active_conditions first
-            for active in current_profile.get("active_conditions", []):
-                act_name = active.get("name", "") if isinstance(active, dict) else str(active)
-                if cond_clean == act_name.lower() or act_name.lower() in cond_clean:
-                    matched_source = active
-                    source_list_name = "active_conditions"
-                    break
-
-            # Look in suspected_conditions if not found in active
-            if not matched_source:
-                for susp in current_profile.get("suspected_conditions", []):
-                    susp_name = susp.get("name", "") if isinstance(susp, dict) else str(susp)
-                    if cond_clean == susp_name.lower() or susp_name.lower() in cond_clean:
-                        matched_source = susp
-                        source_list_name = "suspected_conditions"
-                        break
-
-            if matched_source and source_list_name:
-                current_profile[source_list_name].remove(matched_source)
-                if not isinstance(matched_source, dict):
-                    matched_source = {"name": str(matched_source).strip().lower()}
-                
-                # Avoid duplicates in resolved list
-                existing_resolved = None
-                for res in current_profile.get("resolved_conditions", []):
-                    res_name = res.get("name", "") if isinstance(res, dict) else str(res)
-                    if matched_source["name"] == res_name.lower():
-                        existing_resolved = res
-                        break
-                if existing_resolved:
-                    if isinstance(existing_resolved, dict):
-                        for k, v in matched_source.items():
-                            existing_resolved[k] = v
-                    else:
-                        idx = current_profile["resolved_conditions"].index(existing_resolved)
-                        current_profile["resolved_conditions"][idx] = matched_source
-                else:
-                    current_profile["resolved_conditions"].append(matched_source)
+            if cond_clean:
+                memory_manager.resolve_condition(condition_name=cond_clean)
                 updated = True
+
+    if updated:
+        snapshot = memory_manager.get_patient_snapshot()
+        current_profile.clear()
+        current_profile.update(snapshot)
 
     return updated
 
@@ -516,7 +381,7 @@ def extract_profile_updates(user_msg, current_profile):
 
 messages = []
 last_intent = None
-history_summary = ""
+history_summary = memory_manager.get_latest_summary()
 profile = load_profile()
 
 print("=" * 60)
@@ -547,7 +412,7 @@ while True:
         print(f"\nDoctor : Take care, {name}! Goodbye.")
         break
 
-    # Determine whether patient_profile.json requires updating BEFORE generating response
+    # Determine whether patient database requires updating BEFORE generating response
     extract_profile_updates(question, profile)
 
     categoryFilter = None
@@ -620,6 +485,13 @@ while True:
             }
         )
 
+        # Record consultation turn in SQLite database
+        memory_manager.record_consultation(
+            chief_complaint=question,
+            assessment=assistant_reply,
+            summary=history_summary
+        )
+
         # Dynamic history summarization
         if len(messages) >= MAX_HISTORY_MESSAGES:
             turns_to_summarize = messages[:4]  # take oldest 2 turns
@@ -629,6 +501,7 @@ while True:
                     history_summary += " " + summary_chunk
                 else:
                     history_summary = summary_chunk
+                memory_manager.save_summary(summary=history_summary)
             messages = messages[4:]  # prune summarized turns
 
         last_intent = intent

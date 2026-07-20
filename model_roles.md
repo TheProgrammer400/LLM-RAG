@@ -14,7 +14,7 @@ flowchart TD
     
     subgraph Background Processing
         PythonOrchestrator -->|Extract Profile & Summarize| Phi4[Phi-4 Mini]
-        Phi4 -->|Structured JSON Updates| Profile[(patient_profile.json)]
+        Phi4 -->|Structured DB Updates| Profile[(database/patient_memory.db)]
     end
 
     subgraph RAG & Context
