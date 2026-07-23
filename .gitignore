@@ -1,3 +1,6 @@
 books
 venv
 patient_profile.json
+*.zip
+model_roles.md
+prompt_processing_analysis.md

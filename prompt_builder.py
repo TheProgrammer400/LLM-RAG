@@ -3,7 +3,7 @@ from prompts import BASE_SYSTEM_PROMPT
 
 
 def buildUnifiedPrompt(question, messages, documents, profile=None, historySummary=None):
-    # 1. Format the Patient Profile (with extensible fields)
+    # 1. Format the Patient Profile (Name and Age only)
     profileStr = ""
     if profile:
         profileStr = "========================\nPATIENT PROFILE\n========================\n"
@@ -11,27 +11,6 @@ def buildUnifiedPrompt(question, messages, documents, profile=None, historySumma
             profileStr += f"- Name: {profile['name']}\n"
         if profile.get("age"):
             profileStr += f"- Age: {profile['age']}\n"
-        if profile.get("gender"):
-            profileStr += f"- Gender: {profile['gender']}\n"
-        
-        # Format list-based profile arrays
-        for listKey in ["allergies", "medications", "surgeries", "family_history"]:
-            valList = profile.get(listKey, [])
-            if valList:
-                profileStr += f"- {listKey.replace('_', ' ').capitalize()}: {', '.join(valList)}\n"
-                
-        # Format condition-based profile arrays (dicts or strings)
-        for condKey in ["chronic_conditions", "active_conditions", "suspected_conditions", "resolved_conditions"]:
-            valList = profile.get(condKey, [])
-            if valList:
-                profileStr += f"- {condKey.replace('_', ' ').capitalize()}:\n"
-                for item in valList:
-                    if isinstance(item, dict):
-                        nameVal = item.get("name", "unknown")
-                        metaVal = ", ".join(f"{mk}: {mv}" for mk, mv in item.items() if mk != "name")
-                        profileStr += f"  * {nameVal} ({metaVal})\n" if metaVal else f"  * {nameVal}\n"
-                    else:
-                        profileStr += f"  * {item}\n"
         profileStr += "\n"
 
     # 2. Format the Conversation Summary

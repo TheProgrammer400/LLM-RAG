@@ -1,5 +1,4 @@
 import json
-import sqlite3
 from db_manager import PatientMemoryManager
 
 
@@ -11,16 +10,6 @@ def main():
     print("=" * 60)
     print(json.dumps(pm.get_patient_snapshot(), indent=4))
     
-    print("\n" + "=" * 60)
-    print("MEDICAL TIMELINE EVENTS")
-    print("=" * 60)
-    timeline = pm.get_timeline(limit=10)
-    if not timeline:
-        print("No timeline events recorded yet.")
-    else:
-        for event in timeline:
-            print(f"[{event['timestamp']}] {event['event_type']} -> {event['entity_name']} ({event['description']})")
-
     print("\n" + "=" * 60)
     print("DATABASE TABLES SUMMARY")
     print("=" * 60)
