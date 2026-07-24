@@ -83,3 +83,111 @@ def buildUnifiedPrompt(question, messages, documents, profile=None, historySumma
         }
     )
     return conversationList
+
+
+def build_dynamic_prompt(question, intent, plan, consultation_state, profile = None, documents = None, historySummary = None, messages = None):
+    # 1. Format the Patient Profile (Name and Age only)
+    profileStr = ""
+    if profile:
+        profileStr = "========================\nPATIENT PROFILE\n========================\n"
+        if profile.get("name"):
+            profileStr += f"- Name: {profile['name']}\n"
+        if profile.get("age"):
+            profileStr += f"- Age: {profile['age']}\n"
+        profileStr += "\n"
+
+    # 2. Format the Consultation State
+    stateStr = ""
+    if consultation_state:
+        stateStr = "========================\nCONSULTATION STATE\n========================\n"
+        if consultation_state.current_symptoms:
+            symptomList = []
+            for sym in consultation_state.current_symptoms:
+                meta = consultation_state.symptomMetadata.get(sym)
+                if meta:
+                    metaDetails = ", ".join(f"{k}: {v}" for k, v in meta.items())
+                    symptomList.append(f"  * {sym} ({metaDetails})")
+                else:
+                    symptomList.append(f"  * {sym}")
+            stateStr += "- Reported Symptoms:\n" + "\n".join(symptomList) + "\n"
+        if consultation_state.negativeFindings:
+            stateStr += f"- Explicit Negative Findings (Denied Symptoms): {', '.join(consultation_state.negativeFindings)}\n"
+        if consultation_state.givenRecommendations:
+            stateStr += f"- Given Recommendations (Do NOT repeat): {', '.join(consultation_state.givenRecommendations)}\n"
+        stateStr += "\n"
+
+    # 3. Format the Conversation Summary
+    summaryStr = ""
+    if historySummary:
+        summaryStr = (
+            "========================\nCONVERSATION SUMMARY\n========================\n"
+            f"{historySummary}\n\n"
+        )
+
+    # 4. Format the Retrieved Medical Knowledge (RAG)
+    referenceStr = ""
+    if documents:
+        contextVal = "\n\n------------------------------\n\n".join(documents)
+        referenceStr = (
+            "========================\nRETRIEVED MEDICAL KNOWLEDGE (RAG)\n========================\n"
+            "Relevant medical reference found. Base your answer primarily on the retrieved context.\n"
+            "If the retrieved documents contain only partial information or if there are gaps in the retrieved context regarding the user's specific query, "
+            "you must seamlessly fill the missing gaps using your own general medical knowledge to provide a complete, comprehensive, and high-quality response.\n"
+            "Never immediately refuse or state that you lack information.\n\n"
+            f"Reference Context:\n{contextVal}\n\n"
+        )
+    else:
+        referenceStr = (
+            "========================\nRETRIEVED MEDICAL KNOWLEDGE (RAG)\n========================\n"
+            "No specific reference textbook documents were retrieved for this query. Answer directly using your general medical knowledge.\n"
+            "Provide a complete, comprehensive, medically accurate, and detailed response.\n"
+            "NEVER refuse safe educational medical questions, and NEVER state that you cannot provide medical information or that the knowledge base lacks information on this topic.\n\n"
+        )
+
+    # 5. Format Clinical Plan Instructions
+    planStr = ""
+    if plan and plan.instructions:
+        planStr = (
+            "========================\nCLINICAL DIALOGUE INSTRUCTIONS\n========================\n"
+            "Follow these clinical interaction guidelines strictly for this turn:\n"
+            f"{plan.instructions}\n\n"
+        )
+
+    # 6. Refusal and greeting rules
+    rulesStr = (
+        "========================\nADDITIONAL RULES\n========================\n"
+        "1. Off-Topic Refusals: Your role is strictly and completely limited to medical and health-related topics. "
+        "If the user asks about external non-medical off-topic subjects (such as general trivia, coding, history, celebrities, movies, pop culture, etc.), "
+        "you must IMMEDIATELY and POLITELY DECLINE, state that you can only help with medical or health-related topics, and prompt them to ask a health-related question. Do NOT provide any external facts or trivia about the off-topic subject under any circumstances.\n"
+        "2. Greetings & Meta-Questions: If the user greets you or asks about the conversation itself (like asking for their name, their age, their profile details, or who you are), answer politely in character as the Physician Assistant. E.g., if they ask for their name or age, tell them what is recorded in the Patient Profile, or say you don't know it yet if it is not in the Patient Profile.\n"
+        "3. Never refer to sources, document names, or PDFs. Never say 'according to the documents'. Speak naturally like an experienced physician assistant.\n"
+        "4. CRITICAL DISTINCTION: Do NOT confuse RETRIEVED MEDICAL KNOWLEDGE (reference textbooks) with the PATIENT PROFILE or CONSULTATION STATE. The retrieved reference context contains general medical textbook knowledge for your clinical guidance; it is NOT the patient's personal medical history. The patient's actual medical history, reported symptoms, and profile are strictly listed under the PATIENT PROFILE, CONSULTATION STATE, and CONVERSATION SUMMARY sections. Only attribute symptoms/conditions to the patient if they appear in these patient-specific sections.\n"
+        "5. Educational Medical Questions: Questions asking about diseases, causes, symptoms, risk factors, diagnostic tests, or treatments are requests for safe medical education, NOT requests for a personal diagnosis. Answer all educational medical questions directly, thoroughly, and in detail without stating that you cannot provide information.\n"
+    )
+
+    systemContent = (
+        f"{BASE_SYSTEM_PROMPT}\n\n"
+        f"{profileStr}"
+        f"{stateStr}"
+        f"{summaryStr}"
+        f"{referenceStr}"
+        f"{planStr}"
+        f"{rulesStr}"
+    )
+
+    conversationList = [
+        {
+            "role": "system",
+            "content": systemContent
+        }
+    ]
+    if messages:
+        conversationList.extend(messages)
+    
+    conversationList.append(
+        {
+            "role": "user",
+            "content": question
+        }
+    )
+    return conversationList

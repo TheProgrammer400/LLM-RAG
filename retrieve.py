@@ -6,9 +6,9 @@ client = chromadb.PersistentClient(path="database")
 SIMILARITY_THRESHOLD = 0.7
 
 
-def retrieve(query, category=None, top_k=5):
+def retrieve(query, category=None, top_k=5, collection_name="medical_knowledge"):
     try:
-        collection = client.get_collection("medical_knowledge")
+        collection = client.get_collection(collection_name)
     except Exception:
         # Collection has not been created/ingested yet
         return {
