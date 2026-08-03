@@ -18,10 +18,37 @@ class LLMClient:
         target_model = self.escalation_model if escalate else self.primary_model
         logger.info(f"Invoking LLM model: {target_model} (escalated={escalate})")
 
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+        candidate_models = [target_model, "qwen2.5:7b-instruct", "qwen2.5:7b", "qwen2.5:latest", "qwen2.5", "phi4-mini:latest", "phi4-mini"]
+        urls_to_try = list(dict.fromkeys([self.ollama_url, "http://127.0.0.1:11434", "http://localhost:11434"]))
+
+        async with httpx.AsyncClient(timeout=300.0) as client:
+
+            working_url = None
+            for url in urls_to_try:
+                try:
+                    tags_resp = await client.get(f"{url}/api/tags")
+                    if tags_resp.status_code == 200:
+                        working_url = url
+                        installed = [m.get("name") for m in tags_resp.json().get("models", [])]
+                        logger.info(f"Connected to Ollama at {working_url}. Installed models: {installed}")
+                        for cand in candidate_models:
+                            if any(cand in m for m in installed):
+                                target_model = [m for m in installed if cand in m][0]
+                                break
+                        else:
+                            if installed:
+                                target_model = installed[0]
+                        break
+                except Exception as e:
+                    logger.debug(f"Could not connect to Ollama at {url}: {e}")
+
+            if not working_url:
+                working_url = self.ollama_url or "http://127.0.0.1:11434"
+
+            try:
+                logger.info(f"Sending prompt to Ollama ({working_url}) using model: {target_model}")
                 resp = await client.post(
-                    f"{self.ollama_url}/api/generate",
+                    f"{working_url}/api/generate",
                     json={
                         "model": target_model,
                         "prompt": f"{system_prompt}\n\nUser Query: {user_prompt}",
@@ -31,10 +58,14 @@ class LLMClient:
                 if resp.status_code == 200:
                     data = resp.json()
                     return data.get("response", "")
-        except Exception as e:
-            logger.warning(f"Ollama API connection failed ({e}). Returning fallback structured reasoning.")
+                else:
+                    logger.warning(f"Ollama API returned status {resp.status_code}: {resp.text}")
+            except Exception as e:
+                logger.warning(f"Ollama API connection failed for {working_url} ({type(e).__name__}: {e}). Returning fallback structured reasoning.")
 
         return self._generate_fallback_response(system_prompt)
+
+
 
     def _generate_fallback_response(self, system_prompt: str) -> str:
         """Deterministic fallback when offline without Ollama binary."""

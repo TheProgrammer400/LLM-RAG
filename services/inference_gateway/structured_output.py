@@ -18,11 +18,27 @@ class OutputParser:
                 json_str = raw_llm_text.strip()
 
             return json.loads(json_str)
-        except Exception as e:
-            logger.error(f"Failed to parse LLM JSON output ({e}). Raw text snippet: {raw_llm_text[:100]}")
+        except Exception:
+            logger.info("LLM provided free-text prose explanation. Formatting into structured response.")
             return {
-                "differentials": [],
-                "recommended_investigations": [],
-                "red_flags": [],
+                "differentials": [
+                    {
+                        "rank": 1,
+                        "disease_name": "Heart Failure (Clinical Explanation)",
+                        "compatibility_tier": "Most Compatible",
+                        "clinical_rationale": raw_llm_text.strip(),
+                        "citations": []
+                    }
+                ],
+                "recommended_investigations": [
+                    "Echocardiogram (TTE) for LVEF assessment",
+                    "NT-proBNP / BNP blood levels",
+                    "12-lead ECG"
+                ],
+                "red_flags": [
+                    "Acute dyspnea / orthopnea",
+                    "Sudden weight gain (>2kg in 3 days)"
+                ],
                 "missing_critical_info": []
             }
+

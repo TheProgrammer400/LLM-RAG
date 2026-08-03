@@ -1,6 +1,5 @@
-version: '3.8'
-
 services:
+  # --- Infrastructure & Database Services ---
   qdrant:
     image: qdrant/qdrant:v1.8.2
     container_name: cdss-qdrant
@@ -39,6 +38,83 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+
+  # --- Microservices (All 5 CDSS Services) ---
+  nlp-service:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    container_name: cdss-nlp-service
+    command: uvicorn services.nlp_service.main:app --host 0.0.0.0 --port 8001
+    ports:
+      - "8001:8001"
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  retrieval-service:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    container_name: cdss-retrieval-service
+    command: uvicorn services.retrieval_service.main:app --host 0.0.0.0 --port 8002
+    ports:
+      - "8002:8002"
+    depends_on:
+      - qdrant
+      - redis
+      - ollama
+    environment:
+      - QDRANT_HOST=qdrant
+      - REDIS_URL=redis://redis:6379/0
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - PYTHONUNBUFFERED=1
+
+  reasoning-service:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    container_name: cdss-reasoning-service
+    command: uvicorn services.reasoning_service.main:app --host 0.0.0.0 --port 8003
+    ports:
+      - "8003:8003"
+    environment:
+      - PYTHONUNBUFFERED=1
+
+  inference-gateway:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    container_name: cdss-inference-gateway
+    command: uvicorn services.inference_gateway.main:app --host 0.0.0.0 --port 8004
+    ports:
+      - "8004:8004"
+    depends_on:
+      - ollama
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - PYTHONUNBUFFERED=1
+
+  orchestrator:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile
+    container_name: cdss-orchestrator
+    command: uvicorn services.orchestrator.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      - nlp-service
+      - retrieval-service
+      - reasoning-service
+      - inference-gateway
+      - postgres
+    environment:
+      - NLP_SERVICE_URL=http://nlp-service:8001
+      - RETRIEVAL_SERVICE_URL=http://retrieval-service:8002
+      - REASONING_SERVICE_URL=http://reasoning-service:8003
+      - INFERENCE_GATEWAY_URL=http://inference-gateway:8004
+      - POSTGRES_URI=postgresql+asyncpg://cdss_user:cdss_password@postgres:5432/cdss_db
+      - PYTHONUNBUFFERED=1
 
 volumes:
   qdrant_data:

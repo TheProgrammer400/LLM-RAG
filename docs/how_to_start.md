@@ -11,43 +11,42 @@ This guide provides minor details on how to set up, start infrastructure, run se
 3. **Ollama Models**: Ensure required LLM & embedding models are downloaded locally:
    ```bash
    ollama pull nomic-embed-text
-   ollama pull qwen2.5:7b
+   ollama pull qwen2.5:7b-instruct
    ollama pull phi4-mini:latest
    ```
 
 ---
 
-## Step 1: Virtual Environment & Project Installation
+## Option A: Single-Command Startup (Docker Compose - Recommended 🐳)
 
-Activate your Python virtual environment and install project dependencies:
-
-```bash
-# Navigate to project root directory
-cd "/home/programmer/LLM & RAG"
-
-# Activate existing virtual environment
-source .venv/bin/activate
-
-# Install CDSS package in editable mode
-pip install -e .
-```
-
----
-
-## Step 2: Start Infrastructure Dependencies (Docker Compose)
-
-Start vector database (Qdrant), session store (PostgreSQL), semantic cache (Redis), and Ollama server:
+Spin up **EVERYTHING** (Databases + Qdrant + Redis + Ollama + All 5 Microservices) concurrently in the background with a single command:
 
 ```bash
-# Spin up infrastructure containers in detached mode
-docker-compose -f infra/docker-compose.yml up -d
+docker compose -f infra/docker-compose.yml up -d --build
 ```
 
 ### Verify Container Status:
 ```bash
-docker-compose -f infra/docker-compose.yml ps
+docker compose -f infra/docker-compose.yml ps
 ```
-Ensure ports `6333` (Qdrant), `5432` (PostgreSQL), `6379` (Redis), and `11434` (Ollama) are active.
+Ensure ports `8000` (Main API), `8001` (NLP), `8002` (Retrieval), `8003` (Reasoning), `8004` (Inference), `6333` (Qdrant), `5432` (PostgreSQL), `6379` (Redis), and `11434` (Ollama) are active.
+
+---
+
+## Option B: Single-Command Startup (Python Launcher 🐍)
+
+If you prefer running databases in Docker and Python services locally:
+
+### 1. Start All Infrastructure & Ollama Containers:
+```bash
+docker compose -f infra/docker-compose.yml up -d qdrant postgres redis ollama
+```
+
+### 2. Run All 5 Microservices with 1 Command:
+```bash
+python start_services.py
+```
+*(Press `Ctrl+C` anytime to shut down all 5 services cleanly).*
 
 ---
 
@@ -68,41 +67,7 @@ done
 
 ---
 
-## Step 4: Launch Microservices Architecture
-
-The system consists of 5 microservices. You can launch them in separate terminal tabs or run them in background processes.
-
-### Service Port Mapping:
-| Service Name | Port | Entrypoint |
-| :--- | :--- | :--- |
-| **NLP Extraction Service** | `8001` | `services.nlp_service.main:app` |
-| **Retrieval Service** | `8002` | `services.retrieval_service.main:app` |
-| **Reasoning Service** | `8003` | `services.reasoning_service.main:app` |
-| **Inference Gateway** | `8004` | `services.inference_gateway.main:app` |
-| **Orchestrator Main API** | `8000` | `services.orchestrator.main:app` |
-
-### Terminal Commands to Start Services:
-
-```bash
-# Terminal 1: NLP Service
-uvicorn services.nlp_service.main:app --port 8001 --reload
-
-# Terminal 2: Retrieval Service
-uvicorn services.retrieval_service.main:app --port 8002 --reload
-
-# Terminal 3: Reasoning Service
-uvicorn services.reasoning_service.main:app --port 8003 --reload
-
-# Terminal 4: Inference Gateway
-uvicorn services.inference_gateway.main:app --port 8004 --reload
-
-# Terminal 5: Main Orchestrator API Gateway
-uvicorn services.orchestrator.main:app --port 8000 --reload
-```
-
----
-
-## Step 5: Interacting with the CDSS API
+## Step 4: Interacting with the CDSS API
 
 Once services are running, interact with the system via HTTP REST calls or Swagger UI.
 
@@ -129,7 +94,7 @@ curl -X POST "http://localhost:8000/api/v1/consultation/turn" \
 
 ---
 
-## Step 6: Running Automated Test Suites
+## Step 5: Running Automated Test Suites
 
 To verify end-to-end pipeline functionality, run pytest:
 
