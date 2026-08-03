@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.8.2
+    container_name: cdss-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__HTTP_PORT=6333
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: cdss-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=cdss_user
+      - POSTGRES_PASSWORD=cdss_password
+      - POSTGRES_DB=cdss_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: cdss-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: cdss-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+volumes:
+  qdrant_data:
+  postgres_data:
+  redis_data:
+  ollama_data:

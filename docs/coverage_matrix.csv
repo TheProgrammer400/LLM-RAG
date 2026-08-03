@@ -1,0 +1,18 @@
+Specialty,Source Title,Publisher,Publication Year,Authority Tier,Coverage Status
+Cardiology,Harrison's Principles of Internal Medicine - Cardiology,McGraw-Hill,2022,specialty_textbook,Active
+Neurology,Adams and Victor's Principles of Neurology,McGraw-Hill,2023,specialty_textbook,Active
+Rheumatology,EULAR Textbook on Rheumatic Diseases,BMJ / EULAR,2023,guideline,Active
+Endocrinology,Williams Textbook of Endocrinology,Elsevier,2020,specialty_textbook,Active
+Infectious Disease,Mandell Principles and Practice of Infectious Diseases,Elsevier,2020,specialty_textbook,Active
+Gastroenterology,Sleisenger and Fordtran's Gastrointestinal and Liver Disease,Elsevier,2021,specialty_textbook,Active
+Nephrology,Brenner and Rector's The Kidney,Elsevier,2020,specialty_textbook,Active
+Pulmonology,Fishman's Pulmonary Diseases and Disorders,McGraw-Hill,2023,specialty_textbook,Active
+Hematology/Oncology,Hoffman Hematology Basic Principles and Practice,Elsevier,2023,specialty_textbook,Active
+Psychiatry,DSM-5-TR Clinical Reference,APA,2022,guideline,Active
+Dermatology,Rook's Textbook of Dermatology,Wiley,2020,specialty_textbook,Active
+OB/GYN,Williams Obstetrics,McGraw-Hill,2022,specialty_textbook,Active
+Pediatrics,Nelson Textbook of Pediatrics,Elsevier,2020,specialty_textbook,Active
+Emergency Medicine/Toxicology,Tintinalli's Emergency Medicine,McGraw-Hill,2020,specialty_textbook,Active
+Ophthalmology,AAO Basic and Clinical Science Course - Retina/Uveitis,AAO,2023,guideline,Active
+ENT,Cummings Otolaryngology Head and Neck Surgery,Elsevier,2021,specialty_textbook,Active
+Orthopedics,Campbell's Operative Orthopaedics,Elsevier,2021,specialty_textbook,Active

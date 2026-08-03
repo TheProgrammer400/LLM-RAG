@@ -1,0 +1,76 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Pytest / Unit test & Coverage reports
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+nosetests.xml
+coverage.xml
+*.cover
+*.pydevd
+
+# Environments & Virtualenvs
+.venv/
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+
+# Local Vector / BM25 / Cache Stores & Databases
+.bm25_store/
+database/
+database_old/
+qdrant_storage/
+*.db
+*.sqlite3
+
+# Environment Variables & Secrets
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+
+# IDEs & Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Temporary & Uploaded PDFs (optional: keep sample docs if needed)
+docs/pdfs/*.pdf
+!docs/pdfs/.gitkeep
