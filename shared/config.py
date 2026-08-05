@@ -28,9 +28,9 @@ class Settings(BaseSettings):
     NLI_VERIFIER_MODEL: str = Field(default="cross-encoder/nli-deberta-v3-small")
 
     # LLM Settings
-    OLLAMA_BASE_URL: str = Field(default="http://localhost:11434")
-    PRIMARY_LLM_MODEL: str = Field(default="qwen2.5:7b-instruct")
-    ESCALATION_LLM_MODEL: str = Field(default="qwen2.5:14b-instruct")
+    OLLAMA_BASE_URL: str = Field(default="http://127.0.0.1:11434")
+    PRIMARY_LLM_MODEL: str = Field(default="qwen2.5:7b")
+    ESCALATION_LLM_MODEL: str = Field(default="qwen2.5:7b")
 
     # Retrieval Thresholds & Constraints
     RERANK_SCORE_FLOOR: float = Field(default=0.45)

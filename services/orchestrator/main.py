@@ -1,5 +1,7 @@
+import uuid
+from typing import Any, Dict, Optional
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 from shared.models.schemas import ConsultationResponse
 from services.orchestrator.flow import OrchestratorFlow
 
@@ -12,8 +14,27 @@ app = FastAPI(
 orchestrator_flow = OrchestratorFlow()
 
 class ConsultationTurnRequest(BaseModel):
-    session_id: str
+    session_id: str = Field(default_factory=lambda: f"session_{uuid.uuid4().hex[:8]}")
     physician_input: str
+
+    @model_validator(mode="before")
+    @classmethod
+    def preprocess_input(cls, data: Any) -> Any:
+        if isinstance(data, str):
+            return {
+                "physician_input": data,
+                "session_id": f"session_{uuid.uuid4().hex[:8]}"
+            }
+        if isinstance(data, dict):
+            data = dict(data)
+            if "physician_input" not in data or not data["physician_input"]:
+                for alias in ["query", "input"]:
+                    if alias in data and data[alias]:
+                        data["physician_input"] = data.pop(alias)
+                        break
+            if "session_id" not in data or not data["session_id"]:
+                data["session_id"] = f"session_{uuid.uuid4().hex[:8]}"
+        return data
 
 @app.get("/")
 async def root():

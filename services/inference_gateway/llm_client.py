@@ -12,39 +12,49 @@ class LLMClient:
 
     async def generate_response(self, system_prompt: str, user_prompt: str, escalate: bool = False) -> str:
         """
-        Invokes Ollama local LLM server (Qwen2.5:7B-Instruct or escalated model).
+        Invokes Ollama local LLM server (Qwen2.5:7b or escalated model).
         Fallback to structured rule generation if Ollama service is unreachable.
         """
         target_model = self.escalation_model if escalate else self.primary_model
         logger.info(f"Invoking LLM model: {target_model} (escalated={escalate})")
 
-        candidate_models = [target_model, "qwen2.5:7b-instruct", "qwen2.5:7b", "qwen2.5:latest", "qwen2.5", "phi4-mini:latest", "phi4-mini"]
-        urls_to_try = list(dict.fromkeys([self.ollama_url, "http://127.0.0.1:11434", "http://localhost:11434"]))
+        candidate_models = [target_model, "qwen2.5:7b", "qwen2.5:7b-instruct", "qwen2.5:latest", "qwen2.5", "phi4-mini:latest", "phi4-mini"]
+        urls_to_try = list(dict.fromkeys(["http://127.0.0.1:11434", self.ollama_url, "http://localhost:11434"]))
 
-        async with httpx.AsyncClient(timeout=300.0) as client:
+        working_url = None
+        installed = []
 
-            working_url = None
+        # Fast probe for Ollama tags / installed models
+        async with httpx.AsyncClient(timeout=3.0) as check_client:
             for url in urls_to_try:
                 try:
-                    tags_resp = await client.get(f"{url}/api/tags")
+                    tags_resp = await check_client.get(f"{url}/api/tags")
                     if tags_resp.status_code == 200:
                         working_url = url
                         installed = [m.get("name") for m in tags_resp.json().get("models", [])]
                         logger.info(f"Connected to Ollama at {working_url}. Installed models: {installed}")
-                        for cand in candidate_models:
-                            if any(cand in m for m in installed):
-                                target_model = [m for m in installed if cand in m][0]
-                                break
-                        else:
-                            if installed:
-                                target_model = installed[0]
                         break
                 except Exception as e:
                     logger.debug(f"Could not connect to Ollama at {url}: {e}")
 
-            if not working_url:
-                working_url = self.ollama_url or "http://127.0.0.1:11434"
+        if installed:
+            matched_model = None
+            for cand in candidate_models:
+                base_cand = cand.split(":")[0]
+                for m in installed:
+                    if cand == m or cand in m or m in cand or base_cand in m:
+                        matched_model = m
+                        break
+                if matched_model:
+                    target_model = matched_model
+                    break
+            else:
+                target_model = installed[0]
 
+        if not working_url:
+            working_url = "http://127.0.0.1:11434"
+
+        async with httpx.AsyncClient(timeout=300.0) as client:
             try:
                 logger.info(f"Sending prompt to Ollama ({working_url}) using model: {target_model}")
                 resp = await client.post(
@@ -61,7 +71,8 @@ class LLMClient:
                 else:
                     logger.warning(f"Ollama API returned status {resp.status_code}: {resp.text}")
             except Exception as e:
-                logger.warning(f"Ollama API connection failed for {working_url} ({type(e).__name__}: {e}). Returning fallback structured reasoning.")
+                err_msg = str(e) or repr(e)
+                logger.warning(f"Ollama API connection failed for {working_url} ({type(e).__name__}: {err_msg}). Returning fallback structured reasoning.")
 
         return self._generate_fallback_response(system_prompt)
 
