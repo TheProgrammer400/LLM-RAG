@@ -54,7 +54,7 @@ class LLMClient:
         if not working_url:
             working_url = "http://127.0.0.1:11434"
 
-        async with httpx.AsyncClient(timeout=300.0) as client:
+        async with httpx.AsyncClient(timeout=600.0) as client:
             try:
                 logger.info(f"Sending prompt to Ollama ({working_url}) using model: {target_model}")
                 resp = await client.post(
